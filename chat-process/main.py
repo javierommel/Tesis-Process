@@ -53,12 +53,12 @@ def chat():
    try:
         # create the prompt template
         template = """
-        Eres un guía del museo las conceptas de la ciudad de Cuenca
-        Utilizando sólo la información proporcionada: {context}
-        Por favor proporciona una sola respuesta a la siguiente pregunta: {question}
-        Respuesta:
-        Si no puedes responder a la pregunta, responde solo una vez "No puedo responder a su pregunta"     
-        """
+        Responda la pregunta basándose en el contexto siguiente. Si la
+        pregunta no se puede responder utilizando la información proporcionada, responda
+	con "No se puede responder su pregunta".
+        Contexto: {context}
+        Pregunta: {question}
+        Respuesta: """
 
         # Hardcoded question
         #question = "que es la Sala del Arcángel"
@@ -67,7 +67,7 @@ def chat():
         matched_docs, sources = similarity_search(question, index)
         # Creating the context
         context = "\n".join([doc.page_content for doc in matched_docs])
-        print("context: "+context)
+        #print("context: "+context)
         # instantiating the prompt template and the GPT4All chain
         prompt = PromptTemplate(template=template, input_variables=["context", "question"]).partial(context=context)
         print("prompt")
@@ -78,16 +78,17 @@ def chat():
         print(result)
         loop_end = datetime.datetime.now() #not used now but useful
         loop_elapsed = loop_end - loop_start #not used now but useful
-        print(f"Termina respuesta en: {loop_elapsed}")
+        print("Termina respuesta en: {loop_elapsed}")
         response=result.get('text')
+        print("res: " + response)
         respuesta=""
         if response != "":
-            resp=response.split("Respuesta:")
-            if len(resp)>1:
-                respuesta= resp[1]
-                respuesta= respuesta.replace("\n   ", "")
-            else:
-                respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."
+            indice="No se puede responder su pregunta"
+            #indice=response.find("No se puede responder su pregunta")
+            if indice in response:
+                respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."                                        
+            else :
+                respuesta= response.replace("\n        ", "")
         else: 
             respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."
         responsef = {'respuesta': respuesta, 'mensaje':'Consulta realizada Correctamente', 'codigo':'0'}
