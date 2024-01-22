@@ -2,7 +2,7 @@ import pandas as pd
 import psycopg2
 from flask import Flask, Blueprint, request
 from datetime import datetime
-
+CORS(app)
 app = Flask(__name__)
 
 # Configuración de la conexión a PostgreSQL
@@ -32,7 +32,7 @@ def cargar_archivo():
 
         # Lee el archivo Excel en un DataFrame de pandas
         df = pd.read_excel(archivo, header=None)
-        columnas_a_insertar = [1, 2, 3, 5, 19, 20, 21]
+        columnas_a_insertar = [1, 2, 3, 5, 19, 20, 21, 28]
         # Realiza el procesamiento necesario con el DataFrame
         # Puedes imprimirlo o realizar otras operaciones según tus necesidades
         print("DataFrame recibido:")
@@ -57,7 +57,7 @@ def realizar_insercion(indice,fila,columnas_a_insertar):
         # Abre un cursor para ejecutar comandos SQL
         with conexion.cursor() as cursor:
             # Define tu sentencia SQL de inserción, ajusta según tu esquema y tabla
-            sentencia_sql = "INSERT INTO public.piezas (numero_ordinal, numero_historico, codigo_inpc, nombre, autor, siglo, anio, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            sentencia_sql = "INSERT INTO public.piezas (numero_ordinal, numero_historico, codigo_inpc, nombre, autor, siglo, anio, descripcion, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             
             # Ejecuta la sentencia SQL con los valores de la fila actual
             cursor.execute(sentencia_sql, tuple(valores_a_insertar+[fecha_hora_actual,fecha_hora_actual]))
