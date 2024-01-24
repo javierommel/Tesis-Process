@@ -1,9 +1,10 @@
 import pandas as pd
 import psycopg2
 from flask import Flask, Blueprint, request
+from flask_cors import CORS
 from datetime import datetime
-CORS(app)
 app = Flask(__name__)
+CORS(app)
 
 # Configuración de la conexión a PostgreSQL
 conexion = psycopg2.connect(
