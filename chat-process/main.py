@@ -166,7 +166,7 @@ def transcribe():
         #json_obj = json.loads(json_data)      
         if tipo == '1':    
             # Realizar el reconocimiento de voz en el archivo de audio
-            openai.api_key='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'
+            openai.api_key=''
             
             with open(audio_path, "rb") as audio_file:
                 transcript_es = openai.Audio.transcribe(
