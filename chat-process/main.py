@@ -1,9 +1,12 @@
 from flask import Flask, Blueprint, request, jsonify
 from flask_cors import CORS
+#cambios para gpt4all
 #from langchain.llms import GPT4All
 from langchain.chains import LLMChain
 from langchain_core.prompts import PromptTemplate
-from langchain_community.llms import GPT4All
+#cambios para gpt4all
+#from langchain_community.llms import GPT4All
+from langchain_openai import OpenAI
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 # function for loading only TXT files
@@ -16,12 +19,9 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import DirectoryLoader
 # Vector Store Index to create our database about our knowledge
 from langchain.indexes import VectorstoreIndexCreator
-# LLamaCpp embeddings from the Alpaca model
 #from langchain.embeddings import LlamaCppEmbeddings
 #from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
-# FAISS  library for similaarity search
-#from langchain_community.vectorstores import FAISS, Chroma
 from langchain_community.vectorstores.pgvector import PGVector
 import os  #for interaaction with the files
 import datetime
@@ -29,6 +29,15 @@ import sys
 import whisper
 import openai
 import psycopg2
+
+# Configuración de la conexión a PostgreSQL
+conexion = psycopg2.connect(
+    host="localhost",
+    port=5432,
+    user="museo",
+    password="museo123",
+    database="museo-db")
+
 CONEXION="postgresql+psycopg2://museo:museo123@localhost:5432/museo-db"
 COLLECTION_NAME = 'conceptas_vectors'
 
@@ -37,25 +46,26 @@ app = Flask(__name__)
 
 # VARIABLES GLOABLES
 
-# assign the path for the 2 models GPT4All and Alpaca for the embeddings
-gpt4all_path = './models/ElChato-0.1-1.1b_q4_0.gguf'
+#cambios para gpt4all
+#gpt4all_path = './models/ElChato-0.1-1.1b_q4_0.gguf'
 llama_model = 'dell-research-harvard/lt-wikidata-comp-es'
-# get the list of pdf files from the docs directory into a list  format
+openai_model = "gpt-3.5-turbo-instruct"
+# path de archivos pdf
 pdf_folder_path = './archivos/'
-# get the list of pdf files from the docs directory into a list  format
+# path de archivo para control de carga
 file_charge_path = './carga.txt'
-# Calback manager for handling the calls with  the model
+# Calback manager
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 embeddings=None
 llm=None
 index=None
+loop_elapsed=0
 
 # Define un blueprint para el primer servicio
 servicio1_bp = Blueprint('chat', __name__)
 
 def chat():
    try:
-        # create the prompt template
         template = """
         Responda la pregunta basándose en el contexto siguiente. Si la
         pregunta no se puede responder utilizando la información proporcionada, responda
@@ -64,35 +74,29 @@ def chat():
         Pregunta: {question}
         Respuesta: """
 
-        # Hardcoded question
-        #question = "que es la Sala del Arcángel"
-        question = request.form.get('question', '1')  # Default to 'en' if not provided
+        question = request.form.get('question', 'No responder nada')  
         print("question: "+question)
         matched_docs, sources = similarity_search(question, index)
         if len(sources) == 0:
             respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."
             responsef = {'respuesta': respuesta, 'mensaje':'Consulta realizada Correctamente', 'codigo':'0'}
             return jsonify(responsef)
-        # Creating the context
+        # Creación de contexto
         context = "\n".join([doc.page_content for doc,score in matched_docs])
-        #print("context: "+context)
-        # instantiating the prompt template and the GPT4All chain
+        # Creación de template
         prompt = PromptTemplate(template=template, input_variables=["context", "question"]).partial(context=context)
-        print("prompt")
-        loop_start = datetime.datetime.now() #not used now but useful
+        tiempo_start = datetime.datetime.now() 
         llm_chain = LLMChain(prompt=prompt, llm=llm)
         # Print the result
         result=llm_chain.invoke(question)
         print(result)
-        loop_end = datetime.datetime.now() #not used now but useful
-        loop_elapsed = loop_end - loop_start #not used now but useful
-        print("Termina respuesta en: {loop_elapsed}")
+        tiempo_end = datetime.datetime.now()
+        tiempo_elapsed = tiempo_end - tiempo_start
+        print(f"Termina respuesta en: {tiempo_elapsed}")
         response=result.get('text')
-        print("res: " + response)
         respuesta=""
         if response != "":
             indice="No se puede responder su pregunta"
-            #indice=response.find("No se puede responder su pregunta")
             if indice in response:
                 respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."                                        
             else :
@@ -118,15 +122,6 @@ def endpoint2():
     return chat()
 
 
-# create the embedding object
-#embeddings = LlamaCppEmbeddings(model_path=llama_path)
-#embeddings = GPT4AllEmbeddings(model="llama-2-7b-ft-instruct-es.Q4_0.gguf")
-#embeddings = HuggingFaceEmbeddings(model_name=llama_model)
-# create the GPT4All llm object
-#llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
-#llm = GPT4All(model=gpt4all_path)
-# Split text
-
 # Registra el blueprint del Servicio 1 en la aplicación principal
 app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
 
@@ -134,8 +129,49 @@ app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
 servicio2_bp = Blueprint('process', __name__)
 
 @servicio2_bp.route('/cargarpiezas')
-def endpoint3():
-    return '¡Este es el endpoint 1 del Servicio 2!'
+def cargar_archivo():
+    try:
+        archivo = request.files['archivo']
+
+        # Lee el archivo Excel en un DataFrame de pandas
+        df = pd.read_excel(archivo, header=None)
+        columnas_a_insertar = [1, 2, 3, 5, 19, 20, 21, 28]
+        # Realiza el procesamiento necesario con el DataFrame
+        # Puedes imprimirlo o realizar otras operaciones según tus necesidades
+        print("DataFrame recibido:")
+        print(df)
+
+        # Itera sobre los registros y realiza la inserción en la base de datos
+        for indice, fila in df.iterrows():
+            realizar_insercion(indice,fila, columnas_a_insertar)
+
+        return 'Registros insertados en la base de datos con éxito'
+    except Exception as e:
+        return f'Error: {str(e)}'
+
+def realizar_insercion(indice,fila,columnas_a_insertar):
+    if indice<3:
+        return
+    try:
+        valores_a_insertar = fila.iloc[columnas_a_insertar].tolist()
+        valores_a_insertar = [0 if pd.isna(valor) else valor for valor in valores_a_insertar]
+        fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # print("DataFrame recibido:" +valores_a_insertar)
+        # Abre un cursor para ejecutar comandos SQL
+        with conexion.cursor() as cursor:
+            # Define tu sentencia SQL de inserción, ajusta según tu esquema y tabla
+            sentencia_sql = "INSERT INTO public.piezas (numero_ordinal, numero_historico, codigo_inpc, nombre, autor, siglo, anio, descripcion, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            
+            # Ejecuta la sentencia SQL con los valores de la fila actual
+            cursor.execute(sentencia_sql, tuple(valores_a_insertar+[fecha_hora_actual,fecha_hora_actual]))
+
+        # Confirma la transacción
+        conexion.commit()
+    except Exception as e:
+        # En caso de error, imprime el mensaje y realiza un rollback
+        print(f"Error al insertar registro: {str(e)}")
+        conexion.rollback()
+
 
 @servicio2_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
@@ -146,7 +182,7 @@ def transcribe():
         # Obtener el archivo de audio y el JSON de la solicitud
         audio_file = request.files['audio']
         lang = request.form.get('language', 'es')  # Default to 'en' if not provided
-        tipo = request.form.get('tipo', '2')  # Default to 'en' if not provided
+        tipo = request.form.get('tipo', '1')  # Default to 'en' if not provided
         #json_data = request.form.get('json')
 
         if not audio_file:
@@ -181,18 +217,10 @@ def transcribe():
             model = whisper.load_model("tiny")
             result = model.transcribe(audio_path)
             print(result["text"])
-            #with open(audio_path, "rb") as audio_file:
-            #    transcript_es = openai.Audio.transcribe(
-            #    file = audio_file,
-            #    model = "whisper-1",
-            #    response_format="text",
-            #    language=lang
-            #)
             transcript_es=result["text"]
-            #print(transcript_es)
             
         # Eliminar el archivo de audio temporal
-        # os.remove(audio_path)
+        os.remove(audio_path)
         # Eliminar el salto de línea (\n) del texto transcribido
         cleaned_result = transcript_es.strip()
         # Crear el JSON de respuesta con el texto transcrito
@@ -210,23 +238,19 @@ app.register_blueprint(servicio2_bp, url_prefix='/servicio2')
 
 def split_chunks(sources):
     chunks = []
-    #splitter = RecursiveCharacterTextSplitter(separator="*embbeding*", chunk_size=256, chunk_overlap=0)
     splitter = CharacterTextSplitter(separator="*embbeding*", chunk_size=256, chunk_overlap=0)
-    #splitter = CharacterTextSplitter(separator="/*embbeding*/")
     i=0
     for chunk in splitter.split_documents(sources):
-        #print(i)
-        #print(chunk)
         chunks.append(chunk)
         i=i+1
     return chunks
 
 
 def create_index(chunks):
-    texts = [doc.page_content for doc in chunks]
-    metadatas = [doc.metadata for doc in chunks]
+    #cambios para gpt4all
+    #texts = [doc.page_content for doc in chunks]
+    #metadatas = [doc.metadata for doc in chunks]
 
-    #search_index = Chroma.from_texts(texts, embeddings, metadatas=metadatas)
     search_index = PGVector.from_documents(
     embedding=embeddings,
     documents=chunks,
@@ -301,9 +325,6 @@ def generar_faiss():
     print(f"Merging completed")
     print("-----------------------------------")
     print("Saving Merged Database Locally")
-    # Save the databasae locally
-    #db0.save_local("my_faiss_index")
-    #db2 = Chroma.from_documents(docs, embedding_function, persist_directory="./chroma_db")
     print("-----------------------------------")
     print("merged database saved as my_faiss_index")
     general_end = datetime.datetime.now() #not used now but useful
@@ -321,7 +342,9 @@ def generar_faiss():
 
 if __name__ == '__main__':
     embeddings = HuggingFaceEmbeddings(model_name=llama_model)
-    llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
+    #cambios para gpt4all
+    #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
+    llm = OpenAI(model_name=openai_model, openai_api_key='', temperature=0.9)
     if os.path.exists(file_charge_path):
         index=carga_inicial()
     else: 
