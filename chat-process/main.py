@@ -202,7 +202,7 @@ def transcribe():
         #json_obj = json.loads(json_data)      
         if tipo == '1':    
             # Realizar el reconocimiento de voz en el archivo de audio
-            openai.api_key=''
+            openai.api_key='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'
             
             with open(audio_path, "rb") as audio_file:
                 transcript_es = openai.Audio.transcribe(
@@ -344,7 +344,7 @@ if __name__ == '__main__':
     embeddings = HuggingFaceEmbeddings(model_name=llama_model)
     #cambios para gpt4all
     #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
-    llm = OpenAI(model_name=openai_model, openai_api_key='', temperature=0.9)
+    llm = OpenAI(model_name=openai_model, openai_api_key='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', temperature=0.9)
     if os.path.exists(file_charge_path):
         index=carga_inicial()
     else: 
