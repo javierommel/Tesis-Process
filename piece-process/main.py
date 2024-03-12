@@ -136,10 +136,14 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
             #Buscamos elementos en donde se pueden escoger más de uno
             elif (columna>=int(materiales[0]) and columna<=int(materiales[1])):
                 if(valor=='x'):
-                    valores_materiales.append(buscar_id(resultados, fila_materiales[columna], 'materiales'))
+                    id_elemento=buscar_id(resultados, fila_materiales[columna], 'materiales')
+                    if id_elemento is not None:
+                            valores_materiales.append(id_elemento)
             elif (columna>=int(deterioro[0]) and columna<=int(deterioro[1])):
                if(valor=='x'):
-                    valores_deterioro.append(buscar_id(resultados, fila_deterioro[columna], 'opcion_deterioros'))
+                    id_elemento=buscar_id(resultados, fila_deterioro[columna], 'opcion_deterioros')
+                    if id_elemento is not None:
+                            valores_deterioro.append(id_elemento)
             #No agregamos más de 2 fotos
             elif (columna>=int(fotosno[0]) and columna<=int(fotosno[1])):
                 print("no cargar foto")
@@ -172,10 +176,14 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
                 with conexion.cursor() as cursor2: 
                     sentencia_sql2="INSERT INTO public.material_piezas (pieza, material, \"createdAt\", \"updatedAt\" ) VALUES (%s, %s, %s,%s) "
                     cursor2.execute(sentencia_sql2, tuple([id_pieza, dato, fecha_hora_actual,fecha_hora_actual]))
+        print(f"valores: {valores_deterioro}")
         for dato in valores_deterioro:
                 with conexion.cursor() as cursor3: 
                     sentencia_sql3="INSERT INTO public.deterioro_piezas (pieza, deterioro, \"createdAt\", \"updatedAt\" ) VALUES (%s, %s, %s,%s) "
-                    cursor3.execute(sentencia_sql3, tuple([id_pieza, dato, fecha_hora_actual,fecha_hora_actual]))                    
+                    cursor3.execute(sentencia_sql3, tuple([id_pieza, dato, fecha_hora_actual,fecha_hora_actual]))   
+        with conexion.cursor() as cursor4:
+            sentencia_sql = "INSERT INTO public.historial_piezas (piece_id, tipo_accion, datos_antiguos, datos_nuevos, fecha_modificacion, usuario_modificacion, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+            cursor4.execute(sentencia_sql, tuple([id_pieza,"creacion",None,None,fecha_hora_actual,usuario_modificacion,fecha_hora_actual,fecha_hora_actual]))                 
         # Confirma la transacción
         conexion.commit()
         
