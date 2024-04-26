@@ -2,3 +2,4 @@
 /llama.cpp
 /my_faiss_index
 /models/*
+.env

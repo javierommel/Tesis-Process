@@ -1,0 +1,13 @@
+{
+    "campos_piezas": {
+        "tipos": "4",
+        "tecnicas": "18",
+        "estado_piezas":"31",
+        "estado_integridades":"60",
+        "materiales":"7,16",
+        "opcion_deterioro":"32,58",
+        "fotosno":"67,74",
+        "fotos":"65,66"
+    },
+    "fila_cabecera":"2"
+}

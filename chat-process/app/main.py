@@ -1,5 +1,6 @@
 from flask import Flask, Blueprint, request, jsonify
 from flask_cors import CORS
+from process import cargar_archivo
 #cambios para gpt4all
 #from langchain.llms import GPT4All
 from langchain.chains import LLMChain
@@ -29,16 +30,19 @@ import sys
 import whisper
 import openai
 import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configuración de la conexión a PostgreSQL
 conexion = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    user="museo",
-    password="museo123",
-    database="museo-db")
+    host=os.getenv("HOST_DB_PROCESS"),
+    port=os.getenv("PORT_DB_PROCESS"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("PASSWORD_DB_PROCESS"),
+    database=os.getenv("DATABASE_DB_PROCESS"))
 
-CONEXION="postgresql+psycopg2://museo:museo123@localhost:5432/museo-db"
+CONEXION="postgresql+psycopg2://"+os.getenv("DB_USER")+":"+os.getenv("PASSWORD_DB_PROCESS")+"@"+os.getenv("HOST_DB_PROCESS")+":"+os.getenv("PORT_DB_PROCESS")+"/"+os.getenv("DATABASE_DB_PROCESS")
 COLLECTION_NAME = 'conceptas_vectors'
 
 app = Flask(__name__)
@@ -51,9 +55,9 @@ app = Flask(__name__)
 llama_model = 'dell-research-harvard/lt-wikidata-comp-es'
 openai_model = "gpt-3.5-turbo-instruct"
 # path de archivos pdf
-pdf_folder_path = './archivos/'
+pdf_folder_path = '../archivos/'
 # path de archivo para control de carga
-file_charge_path = './carga.txt'
+file_charge_path = '../carga.txt'
 # Calback manager
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 embeddings=None
@@ -129,50 +133,8 @@ app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
 servicio2_bp = Blueprint('process', __name__)
 
 @servicio2_bp.route('/cargarpiezas')
-def cargar_archivo():
-    try:
-        archivo = request.files['archivo']
-
-        # Lee el archivo Excel en un DataFrame de pandas
-        df = pd.read_excel(archivo, header=None)
-        columnas_a_insertar = [1, 2, 3, 5, 19, 20, 21, 28]
-        # Realiza el procesamiento necesario con el DataFrame
-        # Puedes imprimirlo o realizar otras operaciones según tus necesidades
-        print("DataFrame recibido:")
-        print(df)
-
-        # Itera sobre los registros y realiza la inserción en la base de datos
-        for indice, fila in df.iterrows():
-            realizar_insercion(indice,fila, columnas_a_insertar)
-
-        return 'Registros insertados en la base de datos con éxito'
-    except Exception as e:
-        return f'Error: {str(e)}'
-
-def realizar_insercion(indice,fila,columnas_a_insertar):
-    if indice<3:
-        return
-    try:
-        valores_a_insertar = fila.iloc[columnas_a_insertar].tolist()
-        valores_a_insertar = [0 if pd.isna(valor) else valor for valor in valores_a_insertar]
-        fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # print("DataFrame recibido:" +valores_a_insertar)
-        # Abre un cursor para ejecutar comandos SQL
-        with conexion.cursor() as cursor:
-            # Define tu sentencia SQL de inserción, ajusta según tu esquema y tabla
-            sentencia_sql = "INSERT INTO public.piezas (numero_ordinal, numero_historico, codigo_inpc, nombre, autor, siglo, anio, descripcion, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-            
-            # Ejecuta la sentencia SQL con los valores de la fila actual
-            cursor.execute(sentencia_sql, tuple(valores_a_insertar+[fecha_hora_actual,fecha_hora_actual]))
-
-        # Confirma la transacción
-        conexion.commit()
-    except Exception as e:
-        # En caso de error, imprime el mensaje y realiza un rollback
-        print(f"Error al insertar registro: {str(e)}")
-        conexion.rollback()
-
-
+def endpoint3():
+    return cargar_archivo(request, conexion)
 @servicio2_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
     return transcribe()
@@ -202,7 +164,7 @@ def transcribe():
         #json_obj = json.loads(json_data)      
         if tipo == '1':    
             # Realizar el reconocimiento de voz en el archivo de audio
-            openai.api_key=''
+            openai.api_key=os.getenv("OPEN_API_KEY")
             
             with open(audio_path, "rb") as audio_file:
                 transcript_es = openai.Audio.transcribe(
@@ -344,7 +306,7 @@ if __name__ == '__main__':
     embeddings = HuggingFaceEmbeddings(model_name=llama_model)
     #cambios para gpt4all
     #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
-    llm = OpenAI(model_name=openai_model, openai_api_key='', temperature=0.9)
+    llm = OpenAI(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0.9)
     if os.path.exists(file_charge_path):
         index=carga_inicial()
     else: 
