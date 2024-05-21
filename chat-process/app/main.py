@@ -1,6 +1,8 @@
 from flask import Flask, Blueprint, request, jsonify
 from flask_cors import CORS
 from process import cargar_archivo
+from transcribe import transcribe
+from chat import chat
 #cambios para gpt4all
 #from langchain.llms import GPT4All
 from langchain.chains import LLMChain
@@ -48,7 +50,7 @@ COLLECTION_NAME = 'conceptas_vectors'
 app = Flask(__name__)
 
 
-# VARIABLES GLOABLES
+# VARIABLES GLOBALES
 
 #cambios para gpt4all
 #gpt4all_path = './models/ElChato-0.1-1.1b_q4_0.gguf'
@@ -68,54 +70,6 @@ loop_elapsed=0
 # Define un blueprint para el primer servicio
 servicio1_bp = Blueprint('chat', __name__)
 
-def chat():
-   try:
-        template = """
-        Responda la pregunta basándose en el contexto siguiente. Si la
-        pregunta no se puede responder utilizando la información proporcionada, responda
-	    con "No se puede responder su pregunta".
-        Contexto: {context}
-        Pregunta: {question}
-        Respuesta: """
-
-        question = request.form.get('question', 'No responder nada')  
-        print("question: "+question)
-        matched_docs, sources = similarity_search(question, index)
-        if len(sources) == 0:
-            respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."
-            responsef = {'respuesta': respuesta, 'mensaje':'Consulta realizada Correctamente', 'codigo':'0'}
-            return jsonify(responsef)
-        # Creación de contexto
-        context = "\n".join([doc.page_content for doc,score in matched_docs])
-        # Creación de template
-        prompt = PromptTemplate(template=template, input_variables=["context", "question"]).partial(context=context)
-        tiempo_start = datetime.datetime.now() 
-        llm_chain = LLMChain(prompt=prompt, llm=llm)
-        # Print the result
-        result=llm_chain.invoke(question)
-        print(result)
-        tiempo_end = datetime.datetime.now()
-        tiempo_elapsed = tiempo_end - tiempo_start
-        print(f"Termina respuesta en: {tiempo_elapsed}")
-        response=result.get('text')
-        respuesta=""
-        if response != "":
-            indice="No se puede responder su pregunta"
-            if indice in response:
-                respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."                                        
-            else :
-                respuesta= response.replace("\n        ", "")
-        else: 
-            respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."
-        responsef = {'respuesta': respuesta, 'mensaje':'Consulta realizada Correctamente', 'codigo':'0'}
-        return jsonify(responsef)
-   except:
-        error = sys.exc_info()
-        print("Tipo de error:", error[0])
-        print("Mensaje de error:", error[1])
-        print("Rastreo de pila:", error[2])
-        return jsonify({'respuesta': '', 'mensaje':error[1], 'codigo':'1'})
-
 @servicio1_bp.route('/cargarmodelo')
 def endpoint1():
     generar_faiss()
@@ -123,8 +77,7 @@ def endpoint1():
 
 @servicio1_bp.route('/chat', methods=['POST'])
 def endpoint2():
-    return chat()
-
+    return chat(request, index, llm)
 
 # Registra el blueprint del Servicio 1 en la aplicación principal
 app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
@@ -137,63 +90,7 @@ def endpoint3():
     return cargar_archivo(request, conexion)
 @servicio2_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
-    return transcribe()
-
-def transcribe():
-    try:
-        # Obtener el archivo de audio y el JSON de la solicitud
-        audio_file = request.files['audio']
-        lang = request.form.get('language', 'es')  # Default to 'en' if not provided
-        tipo = request.form.get('tipo', '1')  # Default to 'en' if not provided
-        #json_data = request.form.get('json')
-
-        if not audio_file:
-            return jsonify({'error': 'Se requiere un archivo de audio y un JSON'}), 400
-
-        # Guardar el archivo de audio temporalmente
-        print(audio_file)
-        print(tipo)
-        print(lang)
-        
-        if not os.path.exists("temp"):
-            os.makedirs("temp")
-        audio_path = os.path.join('temp', audio_file.filename)
-        audio_file.save(audio_path)
-        print(audio_path)
-        # Cargar el JSON y obtener el campo de interés (ajústalo según tus necesidades)
-        #json_obj = json.loads(json_data)      
-        if tipo == '1':    
-            # Realizar el reconocimiento de voz en el archivo de audio
-            openai.api_key=os.getenv("OPEN_API_KEY")
-            
-            with open(audio_path, "rb") as audio_file:
-                transcript_es = openai.Audio.transcribe(
-                file = audio_file,
-                model = "whisper-1",
-                response_format="text",
-                language=lang
-            )
-            print(transcript_es)
-        if tipo == '2':    
-            # Realizar el reconocimiento de voz en el archivo de audio
-            model = whisper.load_model("tiny")
-            result = model.transcribe(audio_path)
-            print(result["text"])
-            transcript_es=result["text"]
-            
-        # Eliminar el archivo de audio temporal
-        os.remove(audio_path)
-        # Eliminar el salto de línea (\n) del texto transcribido
-        cleaned_result = transcript_es.strip()
-        # Crear el JSON de respuesta con el texto transcrito
-        response = {'transcript': cleaned_result}
-        
-        return jsonify(response)
-
-    except Exception as e:
-        print(str(e))
-        return jsonify({'error': str(e)}), 500
-
+    return transcribe(request)
 
 # Registra el blueprint del Servicio 2 en la aplicación principal
 app.register_blueprint(servicio2_bp, url_prefix='/servicio2')
@@ -221,25 +118,6 @@ def create_index(chunks):
     )
 
     return search_index
-
-
-def similarity_search(query, index):
-    # k is the number of similarity searched that matches the query
-    # default is 4
-    matched_docs = index.similarity_search_with_score(query, k=3)
-    sources = []
-    pregunta= True
-    for doc,score in matched_docs:
-        print(score)
-        if score<=0.75:
-            pregunta=False
-            sources.append(
-                {
-                    "page_content": doc.page_content,
-                    "metadata": doc.metadata,
-                }
-            )
-        return  matched_docs, sources
 
 
 def carga_inicial():
