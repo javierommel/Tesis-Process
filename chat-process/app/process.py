@@ -9,12 +9,13 @@ fila_materiales=()
 fila_deterioro=()
 
 def cargar_archivo(request):
+    print("DataFrame recibido:")
     conexion=connect_db()
     try:
         archivo = request.files['archivo']
         usuario_modificacion=request.form['usuario_modificacion']
         resultados=ejecutar_consultas(conexion)
-        with open('../config.json', 'r') as archivo_config:
+        with open('../config/config.json', 'r') as archivo_config:
             configuracion = json.load(archivo_config)
         
         # Lee el archivo Excel en un DataFrame de pandas
@@ -134,7 +135,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
         #valores_a_insertar = fila.iloc[columnas_a_insertar].tolist()
         valores_a_insertar = [None if pd.isna(valor) else valor for valor in valores_a_insertar]
         fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ##print("DataFrame recibido:" +str(valores_a_insertar))
+        print("DataFrame recibido:" +str(valores_a_insertar))
         # Abre un cursor para ejecutar comandos SQL
         with conexion.cursor() as cursor1:
             # Define tu sentencia SQL 
@@ -158,9 +159,12 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
         with conexion.cursor() as cursor4:
             sentencia_sql = "INSERT INTO public.historial_piezas (piece_id, tipo_accion, datos_antiguos, datos_nuevos, fecha_modificacion, usuario_modificacion, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
             cursor4.execute(sentencia_sql, tuple([id_pieza,"creacion",None,None,fecha_hora_actual,usuario_modificacion,fecha_hora_actual,fecha_hora_actual]))                 
+            
+        embedding=generate_embeddings(valores_a_insertar)
+        store_embeddings(conexion, valores_a_insertar, embedding)
         # Confirma la transacción
         conexion.commit()
-        
+
     except Exception as e:
         # En caso de error, imprime el mensaje y realiza un rollback
         print(f"Error al insertar registro: {str(e)}")
@@ -175,17 +179,17 @@ def buscar_id(resultados, nombre, opcion):
             return id_actual
 
 # Función para generar embeddings con OpenAI
-async def generate_embeddings(piece):
+def generate_embeddings(piece):
     response = openai.Embedding.create(
-        input=piece['descripcion'],
+        input=piece[4],
         model="text-davinci-003",
         timeout=60
     )
     return response['data']['embedding']
 
 # Función para almacenar embeddings en pgvector
-async def store_embeddings(connection, piece_name, embedding):
-    await connection.execute('''
-        INSERT INTO piezas_embeddings (piece_name, embedding)
+def store_embeddings(connection, piece, embedding):
+    connection.execute('''
+        INSERT INTO recomendaciones (id, embedding, titulo, texto, autor,siglo)
         VALUES ($1, pgv_normalize(pgv_from_floats($2)))
-    ''', piece_name, embedding)
+    ''', piece[1], embedding,piece[4],piece[17],piece[8],piece[8])

@@ -1,9 +1,10 @@
 import openai
-from pgvector import SimilarityFunction, Vector
+import os
+#from pgvector import Vector
 from db import connect_db
 
 # Configuración de OpenAI
-openai.api_key = 'tu_api_key_de_openai'
+openai.api_key = os.getenv("OPEN_API_KEY")
 
 # Función para buscar recomendaciones basadas en embeddings
 async def find_recommendations(connection, questions):
