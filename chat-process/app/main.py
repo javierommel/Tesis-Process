@@ -3,6 +3,7 @@ from flask_cors import CORS
 from process import cargar_archivo
 from transcribe import transcribe
 from chat import chat
+from recomendation import recomendation
 #cambios para gpt4all
 #from langchain.llms import GPT4All
 from langchain.chains import LLMChain
@@ -28,21 +29,10 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores.pgvector import PGVector
 import os  #for interaaction with the files
 import datetime
-import sys
-import whisper
-import openai
 import psycopg2
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Configuración de la conexión a PostgreSQL
-conexion = psycopg2.connect(
-    host=os.getenv("HOST_DB_PROCESS"),
-    port=os.getenv("PORT_DB_PROCESS"),
-    user=os.getenv("DB_USER"),
-    password=os.getenv("PASSWORD_DB_PROCESS"),
-    database=os.getenv("DATABASE_DB_PROCESS"))
 
 CONEXION="postgresql+psycopg2://"+os.getenv("DB_USER")+":"+os.getenv("PASSWORD_DB_PROCESS")+"@"+os.getenv("HOST_DB_PROCESS")+":"+os.getenv("PORT_DB_PROCESS")+"/"+os.getenv("DATABASE_DB_PROCESS")
 COLLECTION_NAME = 'conceptas_vectors'
@@ -79,6 +69,10 @@ def endpoint1():
 def endpoint2():
     return chat(request, index, llm)
 
+@servicio1_bp.route('/recomendation', methods=['POST'])
+def endpoint5():
+    return recomendation(request)
+
 # Registra el blueprint del Servicio 1 en la aplicación principal
 app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
 
@@ -87,7 +81,7 @@ servicio2_bp = Blueprint('process', __name__)
 
 @servicio2_bp.route('/cargarpiezas')
 def endpoint3():
-    return cargar_archivo(request, conexion)
+    return cargar_archivo(request)
 @servicio2_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
     return transcribe(request)

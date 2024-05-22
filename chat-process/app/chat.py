@@ -7,9 +7,8 @@ import datetime
 def chat(request, index, llm):
    try:
         template = """
-        Actúa como un guía turístico del museo Las Conceptas y responde la pregunta basándose en el contexto siguiente. Si la
-        pregunta no se puede responder utilizando la información proporcionada, responde
-	    con "No se puede responder su pregunta".
+        Actúa como un guía turístico del museo Las Conceptas y responde la pregunta basándote únicamente en el contexto siguiente. Si la pregunta no se puede responder utilizando la información proporcionada, responde con "No tengo información sobre su pregunta".
+
         Contexto: {context}
         Pregunta: {question}
         Respuesta: """
