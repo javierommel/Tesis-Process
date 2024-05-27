@@ -3,12 +3,11 @@ from db import connect_db
 import json
 import traceback
 from datetime import datetime
-import openai
 
 fila_materiales=()
 fila_deterioro=()
 
-def cargar_archivo(request):
+def cargar_archivo(request, client):
     print("DataFrame recibido:")
     conexion=connect_db()
     try:
@@ -24,7 +23,7 @@ def cargar_archivo(request):
 
         # Itera sobre los registros y realiza la inserción en la base de datos
         for indice, fila in df.iterrows():
-            realizar_insercion(configuracion,resultados, indice,fila, usuario_modificacion, conexion)
+            realizar_insercion(configuracion,resultados, indice,fila, usuario_modificacion, conexion, client)
         
         conexion.close()
         return 'Registros insertados en la base de datos con éxito'
@@ -70,7 +69,7 @@ def ejecutar_consultas(conexion):
     }
     return resultados
 
-def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificacion,conexion):
+def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificacion,conexion, client):
     try:
         global fila_materiales
         global fila_deterioro
@@ -160,7 +159,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
             sentencia_sql = "INSERT INTO public.historial_piezas (piece_id, tipo_accion, datos_antiguos, datos_nuevos, fecha_modificacion, usuario_modificacion, \"createdAt\", \"updatedAt\") VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
             cursor4.execute(sentencia_sql, tuple([id_pieza,"creacion",None,None,fecha_hora_actual,usuario_modificacion,fecha_hora_actual,fecha_hora_actual]))                 
             
-        embedding=generate_embeddings(valores_a_insertar)
+        embedding=generate_embeddings(valores_a_insertar, client)
         store_embeddings(conexion, valores_a_insertar, embedding)
         # Confirma la transacción
         conexion.commit()
@@ -179,17 +178,19 @@ def buscar_id(resultados, nombre, opcion):
             return id_actual
 
 # Función para generar embeddings con OpenAI
-def generate_embeddings(piece):
-    response = openai.Embedding.create(
-        input=piece[4],
-        model="text-davinci-003",
-        timeout=60
-    )
-    return response['data']['embedding']
+def generate_embeddings(piece, client):
+    text=""
+    text+=f"titulo:{piece[4]}\n"
+    text+=f"texto:{piece[17]}\n"
+    text+=f"autor:{piece[8]}\n"
+    text+=f"siglo:{piece[9]}\n"
+    return client.embeddings.create(input=[text], model="text-embedding-ada-002").data[0].embedding
 
 # Función para almacenar embeddings en pgvector
 def store_embeddings(connection, piece, embedding):
-    connection.execute('''
-        INSERT INTO recomendaciones (id, embedding, titulo, texto, autor,siglo)
-        VALUES ($1, pgv_normalize(pgv_from_floats($2)))
-    ''', piece[1], embedding,piece[4],piece[17],piece[8],piece[8])
+    fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor = connection.cursor()
+    cursor.execute('''
+            INSERT INTO recomendaciones (id, embedding, titulo, texto, autor, siglo, \"createdAt\", \"updatedAt\")
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (piece[1], embedding, piece[4], piece[17], piece[8], piece[9],fecha_hora_actual,fecha_hora_actual))

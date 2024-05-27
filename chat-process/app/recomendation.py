@@ -1,56 +1,60 @@
-import openai
-import os
-#from pgvector import Vector
 from db import connect_db
+import numpy as np
 
-# Configuración de OpenAI
-openai.api_key = os.getenv("OPEN_API_KEY")
+client= None
+model_embedding=None
 
 # Función para buscar recomendaciones basadas en embeddings
-async def find_recommendations(connection, questions):
+def find_recommendations(connection, embedding):
+    embedding_array = np.array(embedding)
+    embedding_list = embedding_array.tolist()
     query = '''
-        SELECT p.*
-        FROM piezas p
-        INNER JOIN piezas_embeddings pe ON p.id = pe.piece_id
-        WHERE p.nombre IN (
-            SELECT nombre_pieza
-            FROM preguntas
-            WHERE pregunta = ANY($1)
-        )
-        ORDER BY pg_similarity(pe.embedding, (
-            SELECT pe.embedding
-            FROM piezas_embeddings pe
-            WHERE pe.piece_name IN (
-                SELECT nombre_pieza
-                FROM preguntas
-                WHERE pregunta = ANY($1)
-            )
-        )) DESC
+        SELECT p.titulo, p.texto, p.autor, p.siglo
+        FROM recomendaciones p
+        ORDER BY embedding <-> %s::vector 
         LIMIT 3;
     '''
-    return connection.fetch(query, questions)
+    cursor = connection.cursor()
+    cursor.execute(query,(embedding_list,))
+    return cursor.fetchall()
 
 # Función principal
-def recomendation():
-
+def recomendation(request, cliente, model):
+    global client
+    client = cliente
+    global model_embedding
+    model_embedding=model
     # Conexión a la base de datos
     connection = connect_db()
-    
-    # Ejemplo de pieza (asume que tienes una lista de piezas en tu base de datos)
-    #piece = {
-    #    'nombre': 'Nombre de la pieza',
-    #    'descripcion': 'Descripción detallada de la pieza de museo.'
-        # Añade más campos según tu modelo de datos
-    #}
-    
-    
-    # Buscar recomendaciones
-    questions = ["Pregunta sobre la pieza"]  # Ejemplo de preguntas sobre las piezas
-    recommendations = find_recommendations(connection, questions)
-    print("Recomendaciones:")
-    for recommendation in recommendations:
-        print(recommendation)
-    
-    # Cerrar conexión
-    connection.close()
+    try:
+        
+        # Buscar recomendaciones
+        questions = ["¿Qué es la Virgen de la Merced?", "¿Cuándo se fundó Machu Picchu?", "¿Quién pintó la Mona Lisa?"]  # Ejemplo de preguntas sobre las piezas
+
+        # Generar embeddings para cada pregunta
+        embeddings = [generate_embeddings(question) for question in questions]
+        
+        # Calcular el embedding promedio
+        avg_embedding = np.mean(embeddings, axis=0)
+        recommendations = find_recommendations(connection, avg_embedding)
+        print("Recomendaciones:")
+        #for recommendation in recommendations:
+        #    print(recommendation)
+        
+        # Cerrar conexión
+        connection.close()
+        response = {'recomendaciones': recommendations}
+        return response
+    except Exception as e:
+        # En caso de error, imprime el mensaje y realiza un rollback
+        print(f"Error al insertar registro: {str(e)}")
+        connection.rollback()
+        connection.close()
+        return 'Error en consulta de recomendaciones'
+
+# Función para generar embeddings con OpenAI
+def generate_embeddings(piece):
+    text="Que es la virgen de la merced?"
+    return client.embeddings.create(input=[text], model=model_embedding).data[0].embedding
+
 

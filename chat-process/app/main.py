@@ -6,6 +6,8 @@ from transcribe import transcribe
 from chat import chat
 from recomendation import recomendation
 
+from openai import OpenAI as openai_api
+
 #modelo para gpt4all
 #from langchain.llms import GPT4All
 #from langchain_community.llms import GPT4All
@@ -15,7 +17,7 @@ from recomendation import recomendation
 #from langchain.chains import LLMChain
 #from langchain_core.prompts import PromptTemplate
 
-from langchain_openai import OpenAI
+from langchain_openai import OpenAI as langchain_api
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
@@ -33,14 +35,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+client = openai_api(
+  api_key=os.getenv("OPEN_API_KEY"),  
+)
+
 CONEXION="postgresql+psycopg2://"+os.getenv("DB_USER")+":"+os.getenv("PASSWORD_DB_PROCESS")+"@"+os.getenv("HOST_DB_PROCESS")+":"+os.getenv("PORT_DB_PROCESS")+"/"+os.getenv("DATABASE_DB_PROCESS")
 COLLECTION_NAME = 'conceptas_vectors'
 
 app = Flask(__name__)
 
 # VARIABLES GLOBALES
-llama_model = 'dell-research-harvard/lt-wikidata-comp-es'
-openai_model = "gpt-3.5-turbo-instruct"
+llama_model = os.getenv("LLAMA_MODEL")
+openai_model = os.getenv("OPENAI_MODEL")
+embedding_model=os.getenv("EMBEDDING_MODEL")
 pdf_folder_path = '../archivos/'
 file_charge_path = '../carga.txt'
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
@@ -69,7 +76,7 @@ def endpoint4():
 
 @servicio1_bp.route('/recomendation', methods=['POST'])
 def endpoint5():
-    return recomendation(request)
+    return recomendation(request, client, embedding_model)
 
 # Registra el blueprint del Servicio 1 en la aplicación principal
 app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
@@ -79,7 +86,7 @@ servicio2_bp = Blueprint('process', __name__)
 
 @servicio2_bp.route('/cargarpiezas', methods=['POST'])
 def endpoint3():
-    return cargar_archivo(request)
+    return cargar_archivo(request, client)
 
 # Registra el blueprint del Servicio 2 en la aplicación principal
 app.register_blueprint(servicio2_bp, url_prefix='/servicio2')
@@ -162,7 +169,7 @@ if __name__ == '__main__':
     #carga de modelo llama para crear embeddings
     embeddings = HuggingFaceEmbeddings(model_name=llama_model)
     #carga de modelo openai para responder preguntas
-    llm = OpenAI(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0.9)
+    llm = langchain_api(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0.9)
     #modelo gpt4all
     #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
     
