@@ -56,7 +56,7 @@ def similarity_search(query, index):
     pregunta= True
     for doc,score in matched_docs:
         print(score)
-        if score<=0.75:
+        if score<=0.95:
             pregunta=False
             sources.append(
                 {

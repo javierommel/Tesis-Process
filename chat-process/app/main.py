@@ -1,6 +1,7 @@
 from flask import Flask, Blueprint, request
 import os  
 import datetime
+from db import connect_db
 from process import cargar_archivo
 from transcribe import transcribe
 from chat import chat
@@ -23,6 +24,8 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 # Función para dividir textos y crear chunks
 from langchain.text_splitter import CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema import Document
 
 # Función para cargar pdf
 from langchain_community.document_loaders import PyPDFLoader
@@ -100,6 +103,13 @@ def split_chunks(sources):
         i=i+1
     return chunks
 
+def extraer_datos():
+    conexion=connect_db()
+    with conexion.cursor() as cursor:
+        consulta = "select 'id: '||numero_ordinal ,'nombre de la obra '||nombre, 'otro_nombre: '||otro_nombre, 'autor: '||autor, 'siglo: '||siglo, 'sala: '||ubicacion,'descripcion: '||descripcion from public.piezas where estado=1"
+        cursor.execute(consulta)
+        registros = cursor.fetchall()
+    return registros
 
 def create_index(chunks):
     search_index = PGVector.from_documents(
@@ -147,6 +157,20 @@ def generar_faiss():
         end = datetime.datetime.now()
         elapsed = end - start
         print(f"completed in {elapsed}")
+    registros = extraer_datos()
+    textos = [" ".join(map(str, registro)) for registro in registros]
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks1 = []
+    for texto in textos:
+        chunked_texts = text_splitter.split_text(texto)
+        for chunk in chunked_texts:
+            chunks1.append(Document(page_content=chunk, metadata={}))
+    search_index = PGVector(
+    embedding_function=embeddings,
+    collection_name=COLLECTION_NAME,
+    connection_string=CONEXION
+    )
+    search_index.add_documents(documents=chunks1)
     loop_end = datetime.datetime.now() #not used now but useful
     loop_elapsed = loop_end - loop_start #not used now but useful
     print(f"All documents processed in {loop_elapsed}")
@@ -172,6 +196,7 @@ if __name__ == '__main__':
     llm = langchain_api(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0.9)
     #modelo gpt4all
     #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
+
     
     if os.path.exists(file_charge_path):
         index=carga_inicial()
