@@ -64,10 +64,9 @@ loop_elapsed=0
 # Define un blueprint para el primer servicio
 servicio1_bp = Blueprint('chat', __name__)
 
-@servicio1_bp.route('/cargarmodelo')
+@servicio1_bp.route('/cargarmodelo', methods=['POST'])
 def endpoint1():
-    generar_faiss()
-    return 'Carga exitosa'
+    return entrenar_modelo()
 
 @servicio1_bp.route('/chat', methods=['POST'])
 def endpoint2():
@@ -90,6 +89,7 @@ servicio2_bp = Blueprint('process', __name__)
 @servicio2_bp.route('/cargarpiezas', methods=['POST'])
 def endpoint3():
     return cargar_archivo(request, client)
+    
 
 # Registra el blueprint del Servicio 2 en la aplicación principal
 app.register_blueprint(servicio2_bp, url_prefix='/servicio2')
@@ -135,6 +135,8 @@ def carga_inicial():
 # Cargar información, procesarla, crear embeddings y almacenarlos en la base
 def generar_faiss():
     doc_list = [s for s in os.listdir(pdf_folder_path) if s.endswith('.pdf')]
+    if len(doc_list)==0:
+        return 'Error: No existen archivos con información para entrenar'
     num_of_docs = len(doc_list)
     general_start = datetime.datetime.now()
     print("comienza proceso...")
@@ -157,7 +159,11 @@ def generar_faiss():
         end = datetime.datetime.now()
         elapsed = end - start
         print(f"completed in {elapsed}")
+
+    #Carga de información de la tabla piezas
     registros = extraer_datos()
+    if len(registros) == 0:
+        return "Error: No existen datos en la base de datos para entrenar"
     textos = [" ".join(map(str, registro)) for registro in registros]
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks1 = []
@@ -171,6 +177,7 @@ def generar_faiss():
     connection_string=CONEXION
     )
     search_index.add_documents(documents=chunks1)
+    
     loop_end = datetime.datetime.now() #not used now but useful
     loop_elapsed = loop_end - loop_start #not used now but useful
     print(f"All documents processed in {loop_elapsed}")
@@ -186,8 +193,21 @@ def generar_faiss():
     with open(file_charge_path, "w") as archivo:
         archivo.write(contenido)
     print(f"El archivo '{file_charge_path}' ha sido creado con éxito.")
+    return ""
 
-    
+def entrenar_modelo():
+    try:
+        mensaje=""
+        mensaje=generar_faiss()
+        if mensaje!="":
+            return mensaje
+        global index
+        index=carga_inicial()
+        if len(index)==0:
+            return 'Error: No existen embeddings creados para la carga'
+        return 'Datos entrenados correctamente'
+    except Exception as e:
+        return f'Error: {str(e)}'
 
 if __name__ == '__main__':
     #carga de modelo llama para crear embeddings
@@ -201,6 +221,6 @@ if __name__ == '__main__':
     if os.path.exists(file_charge_path):
         index=carga_inicial()
     else: 
-        generar_faiss()
-        index=carga_inicial()
+        print(f"¡Advertencia! No existen datos entrenados para chatbot")
+
     app.run(port=5000)

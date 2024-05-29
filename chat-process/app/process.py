@@ -8,7 +8,6 @@ fila_materiales=()
 fila_deterioro=()
 
 def cargar_archivo(request, client):
-    print("DataFrame recibido:")
     conexion=connect_db()
     try:
         archivo = request.files['archivo']
@@ -22,12 +21,18 @@ def cargar_archivo(request, client):
         print("DataFrame recibido:")
 
         # Itera sobre los registros y realiza la inserción en la base de datos
+        mensaje=""
         for indice, fila in df.iterrows():
-            realizar_insercion(configuracion,resultados, indice,fila, usuario_modificacion, conexion, client)
-        
+            mensaje=realizar_insercion(configuracion,resultados, indice,fila, usuario_modificacion, conexion, client)
+            if mensaje!="":
+                conexion.rollback()
+                return f"Error: {mensaje}"
+
+        conexion.commit()
         conexion.close()
         return 'Registros insertados en la base de datos con éxito'
     except Exception as e:
+        conexion.rollback()
         conexion.close()
         return f'Error: {str(e)}'
 
@@ -70,6 +75,7 @@ def ejecutar_consultas(conexion):
     return resultados
 
 def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificacion,conexion, client):
+    respuesta=""
     try:
         global fila_materiales
         global fila_deterioro
@@ -82,7 +88,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
             fila_deterioro=fila.iloc[int(deterioro[0]):int(deterioro[1])+1]
             #print(f"fila: {fila_deterioro}")
         if indice<3:
-            return
+            return respuesta
         valores_celda = []
         valores_materiales = []
         valores_deterioro = []
@@ -93,7 +99,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
                 continue
             if(columna==1):
                 id_pieza=valor
-            #print(f"columna: {columna} contador: {contador_campos} valor: {valor}")
+            #print(f"columna: {columna} contador: {deterioro} valor: {valor}")
             #Buscamos id de campos que solo se escogen 1
             if columna==int(configuracion['campos_piezas']['tipos']):
                 valores_celda.append(buscar_id(resultados, valor, 'tipos'))
@@ -120,7 +126,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
                             valores_deterioro.append(id_elemento)
             #No agregamos más de 2 fotos
             elif (columna>=int(fotosno[0]) and columna<=int(fotosno[1])):
-                print("no cargar foto")
+                cargarfoto=""
             elif (columna>=int(fotos[0]) and columna<=int(fotos[1])):
                 valores_celda.append("")
                 contador_campos=contador_campos+1
@@ -134,15 +140,15 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
         #valores_a_insertar = fila.iloc[columnas_a_insertar].tolist()
         valores_a_insertar = [None if pd.isna(valor) else valor for valor in valores_a_insertar]
         fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print("DataFrame recibido:" +str(valores_a_insertar))
+        #print("DataFrame recibido:" +str(valores_a_insertar))
         # Abre un cursor para ejecutar comandos SQL
         with conexion.cursor() as cursor1:
             # Define tu sentencia SQL 
             # de inserción, ajusta según tu esquema y tabla
             sentencia_sql = "INSERT INTO public.piezas (numero_ordinal, numero_historico, codigo_inpc, tipo_bien, nombre, otro_nombre, otros_material, tecnica, autor, siglo, anio, alto, ancho, diametro, espesor, peso, inscripcion, descripcion, ubicacion, regimen,estado_piezas, otros_deterioro, estado_integridad, conservacion, observacion, publicidad, imagen1, imagen2, \"registro_fotográfico\", entidad_investigadora,registrado, fecha_registro, revisado, fecha_revision, realiza_foto, usuario_modificacion, \"createdAt\", \"updatedAt\", estado) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)"
             prueba=tuple(valores_a_insertar+[usuario_modificacion,fecha_hora_actual,fecha_hora_actual,"1"])
-            print(f"sentencia: {sentencia_sql}")
-            print(f"tupla: {prueba}")
+            #print(f"sentencia: {sentencia_sql}")
+            #print(f"tupla: {prueba}")
             # Ejecuta la sentencia SQL con los valores de la fila actual
             cursor1.execute(sentencia_sql, tuple(valores_a_insertar+[usuario_modificacion,fecha_hora_actual,fecha_hora_actual,"1"]))
 
@@ -150,7 +156,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
                 with conexion.cursor() as cursor2: 
                     sentencia_sql2="INSERT INTO public.material_piezas (pieza, material, \"createdAt\", \"updatedAt\" ) VALUES (%s, %s, %s,%s) "
                     cursor2.execute(sentencia_sql2, tuple([id_pieza, dato, fecha_hora_actual,fecha_hora_actual]))
-        print(f"valores: {valores_deterioro}")
+        #print(f"valores: {valores_deterioro}")
         for dato in valores_deterioro:
                 with conexion.cursor() as cursor3: 
                     sentencia_sql3="INSERT INTO public.deterioro_piezas (pieza, deterioro, \"createdAt\", \"updatedAt\" ) VALUES (%s, %s, %s,%s) "
@@ -162,18 +168,21 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
         embedding=generate_embeddings(valores_a_insertar, client)
         store_embeddings(conexion, valores_a_insertar, embedding)
         # Confirma la transacción
-        conexion.commit()
-
+        #conexion.commit()
+        print(f"Id: {fila[1]} Insertado Correctamente")
     except Exception as e:
         # En caso de error, imprime el mensaje y realiza un rollback
-        print(f"Error al insertar registro: {str(e)}")
+        print(f"Error al insertar registro: fila->{fila[1]} Error->{str(e)}")
         traceback.print_exc()
-        conexion.rollback()
+        respuesta=f"Id: {fila[1]} Error al insertar:{str(e)}"
+    return respuesta
+        #conexion.rollback()
 
 def buscar_id(resultados, nombre, opcion):
     consulta = resultados[opcion]
     for fila in consulta:
         id_actual, nombre_actual = fila
+        #print(f"nombreactual: {nombre_actual}   nombre: {nombre}")
         if nombre_actual.upper().strip() == nombre.upper().strip():
             return id_actual
 

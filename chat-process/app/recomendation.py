@@ -29,7 +29,7 @@ def recomendation(request, cliente, model):
     try:
         
         # Buscar recomendaciones
-        questions = ["¿Qué es la Virgen de la Merced?", "¿Cuándo se fundó Machu Picchu?", "¿Quién pintó la Mona Lisa?"]  # Ejemplo de preguntas sobre las piezas
+        questions = ["¿Qué es la Virgen de la Merced?", "¿Que es el risco?", "¿Quien es el arcangel san miguel?"]  # Ejemplo de preguntas sobre las piezas
 
         # Generar embeddings para cada pregunta
         embeddings = [generate_embeddings(question) for question in questions]
