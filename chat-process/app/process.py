@@ -202,4 +202,4 @@ def store_embeddings(connection, piece, embedding):
     cursor.execute('''
             INSERT INTO recomendaciones (id, embedding, titulo, texto, autor, siglo, \"createdAt\", \"updatedAt\")
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ''', (piece[1], embedding, piece[4], piece[17], piece[8], piece[9],fecha_hora_actual,fecha_hora_actual))
+        ''', (piece[0], embedding, piece[4], piece[17], piece[8], piece[9],fecha_hora_actual,fecha_hora_actual))
