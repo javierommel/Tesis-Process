@@ -10,7 +10,7 @@ def find_recommendations(connection, embedding):
     embedding_array = np.array(embedding)
     embedding_list = embedding_array.tolist()
     query = '''
-        SELECT p.titulo, p.texto, p.autor, p.siglo
+        SELECT ltrim(SUBSTRING(p.id,10,6),'0')||'. '||p.titulo, p.texto, p.autor, p.siglo
         FROM recomendaciones p
         ORDER BY embedding <-> %s::vector 
         LIMIT 3
@@ -42,7 +42,6 @@ def recomendation(request, cliente, model):
     # Conexión a la base de datos
     connection = connect_db()
     usuario = request.form.get('usuario', '')
-    tokenid = request.form.get('token', '')
     questions = ["¿Qué es la Virgen de la Merced?", "¿Que es el risco?", "¿Quien es el arcangel san miguel?"]  
     try:
         if usuario!='':

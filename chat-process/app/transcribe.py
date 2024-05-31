@@ -1,10 +1,9 @@
 from flask import jsonify
 import os
-import openai
 import whisper
 
 
-def transcribe(request):
+def transcribe(request, client):
     try:
         # Obtener el archivo de audio y el JSON de la solicitud
         audio_file = request.files['audio']
@@ -25,10 +24,9 @@ def transcribe(request):
         print(audio_path)
 
         if tipo == '1':
-            openai.api_key = os.getenv("OPEN_API_KEY")
 
             with open(audio_path, "rb") as audio_file:
-                transcript_es = openai.Audio.transcribe(
+                transcript_es = client.audio.transcriptions.create(
                     file=audio_file,
                     model="whisper-1",
                     response_format="text",

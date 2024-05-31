@@ -74,7 +74,7 @@ def endpoint2():
 
 @servicio1_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
-    return transcribe(request)
+    return transcribe(request, client)
 
 @servicio1_bp.route('/recomendation', methods=['POST'])
 def endpoint5():
