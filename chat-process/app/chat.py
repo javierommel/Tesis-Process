@@ -80,6 +80,6 @@ def save_question(question, user, token, connection):
     fecha_actual=date.today()
     cursor = connection.cursor()
     cursor.execute('''
-            INSERT INTO visitas ( usuario, fecha_visita, pregunta, sesion,  \"createdAt\", \"updatedAt\")
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (user, fecha_actual, question, token,fecha_hora_actual,fecha_hora_actual))
+            INSERT INTO visitas ( usuario, fecha_visita, pregunta, sesion, tipo, \"createdAt\", \"updatedAt\")
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ''', (user, fecha_actual, question, token,1,fecha_hora_actual,fecha_hora_actual))
