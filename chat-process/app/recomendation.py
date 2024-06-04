@@ -1,6 +1,7 @@
 from db import connect_db
 import numpy as np
 import traceback
+from datetime import datetime, date
 
 client= None
 model_embedding=None
@@ -10,7 +11,7 @@ def find_recommendations(connection, embedding):
     embedding_array = np.array(embedding)
     embedding_list = embedding_array.tolist()
     query = '''
-        SELECT ltrim(SUBSTRING(p.id,10,6),'0')||'. '||p.titulo, p.texto, p.autor, p.siglo
+        SELECT p.id||'. '||p.titulo, p.texto, p.autor, p.siglo, p.id
         FROM recomendaciones p
         ORDER BY embedding <-> %s::vector 
         LIMIT 3
@@ -24,6 +25,7 @@ def find_questions(connection, usuario):
         SELECT pregunta
 	    FROM public.visitas
 	    where usuario=%s
+        and tipo=1
 	    order by "createdAt" desc
 	    limit 3
     '''
@@ -42,6 +44,7 @@ def recomendation(request, cliente, model):
     # Conexión a la base de datos
     connection = connect_db()
     usuario = request.form.get('usuario', '')
+    token = request.form.get('token', '')
     questions = ["¿Qué es la Virgen de la Merced?", "¿Que es el risco?", "¿Quien es el arcangel san miguel?"]  
     try:
         if usuario!='':
@@ -56,7 +59,10 @@ def recomendation(request, cliente, model):
         # Calcular el embedding promedio
         avg_embedding = np.mean(embeddings, axis=0)
         recommendations = find_recommendations(connection, avg_embedding)
+        for rec in recommendations:
+            save_question(rec[0], usuario, token, connection, rec[4])
         
+        connection.commit()
         # Cerrar conexión
         connection.close()
         response = {'recomendaciones': recommendations}
@@ -72,5 +78,15 @@ def recomendation(request, cliente, model):
 # Función para generar embeddings con OpenAI
 def generate_embeddings(question):
     return client.embeddings.create(input=[question], model=model_embedding).data[0].embedding
+
+def save_question(question, usuario, token, connection, id):
+    print(f'rec: {usuario} : {id}')
+    fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    fecha_actual=date.today()
+    cursor = connection.cursor()
+    cursor.execute('''
+            INSERT INTO visitas ( usuario, fecha_visita, pregunta, sesion, tipo, id_piece, \"createdAt\", \"updatedAt\")
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (usuario, fecha_actual, question, token,2,id,fecha_hora_actual,fecha_hora_actual))
 
 

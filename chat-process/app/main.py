@@ -106,7 +106,7 @@ def split_chunks(sources):
 def extraer_datos():
     conexion=connect_db()
     with conexion.cursor() as cursor:
-        consulta = "select 'id: '||numero_ordinal ,'nombre de la obra '||nombre, 'otro_nombre: '||otro_nombre, 'autor: '||autor, 'siglo: '||siglo, 'sala: '||ubicacion,'descripcion: '||descripcion from public.piezas where estado=1"
+        consulta = "select 'id: '||numero_ordinal ,'nombre de la obra '||nombre, 'otro_nombre: '||otro_nombre, 'autor: '||autor, 'siglo: '||siglo, 'sala: '||ubicacion,'descripcion: '||descripcion, numero_ordinal from public.piezas where estado=1"
         cursor.execute(consulta)
         registros = cursor.fetchall()
     return registros
@@ -164,13 +164,16 @@ def generar_faiss():
     registros = extraer_datos()
     if len(registros) == 0:
         return "Error: No existen datos en la base de datos para entrenar"
-    textos = [" ".join(map(str, registro)) for registro in registros]
+    textos = [" ".join(map(str, registro[:-1])) for registro in registros]  # Excluir el nuevo campo de los textos
+    nuevo_campo_valores = [registro[-1] for registro in registros]  # Extraer los valores del nuevo campo
+
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks1 = []
-    for texto in textos:
+    for texto, nuevo_campo_valor in zip(textos, nuevo_campo_valores):
         chunked_texts = text_splitter.split_text(texto)
         for chunk in chunked_texts:
-            chunks1.append(Document(page_content=chunk, metadata={}))
+            chunks1.append(Document(page_content=chunk, metadata={'id': nuevo_campo_valor}))
+    
     search_index = PGVector(
     embedding_function=embeddings,
     collection_name=COLLECTION_NAME,

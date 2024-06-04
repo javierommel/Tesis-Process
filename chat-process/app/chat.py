@@ -7,11 +7,11 @@ import traceback
 
 def chat(request, index, llm):
    conexion=connect_db()
+   id=None
    try:
         question = request.form.get('question', '')
         user = request.form.get('user', '')
         token = request.form.get('token', '')
-        save_question(question, user, token, conexion)
         template = """
         Actúa como un guía turístico del museo Las Conceptas y responde la pregunta basándote únicamente en el contexto siguiente. Si la pregunta no se puede responder utilizando la información proporcionada, responde de una forma muy amable que no dispones información sobre esa pregunta.
 
@@ -26,6 +26,14 @@ def chat(request, index, llm):
             respuesta="No tengo información sobre tu pregunta, intenta preguntarme otra cosa."
             responsef = {'respuesta': respuesta, 'mensaje':'Consulta realizada Correctamente', 'codigo':'0'}
             return jsonify(responsef)
+        for meta in sources:
+            metadata = meta['metadata']
+            nuevo_campo_valor = metadata.get('id', None)
+            if (nuevo_campo_valor):
+                id=nuevo_campo_valor
+
+        save_question(question, user, token, conexion, id)
+        
         # Creación de contexto
         context = "\n".join([doc.page_content for doc,score in matched_docs])
         # Creación de template
@@ -75,11 +83,11 @@ def similarity_search(query, index):
             )
         return  matched_docs, sources
 
-def save_question(question, user, token, connection):
+def save_question(question, user, token, connection, id):
     fecha_hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fecha_actual=date.today()
     cursor = connection.cursor()
     cursor.execute('''
-            INSERT INTO visitas ( usuario, fecha_visita, pregunta, sesion, tipo, \"createdAt\", \"updatedAt\")
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ''', (user, fecha_actual, question, token,1,fecha_hora_actual,fecha_hora_actual))
+            INSERT INTO visitas ( usuario, fecha_visita, pregunta, sesion, tipo, id_piece, \"createdAt\", \"updatedAt\")
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (user, fecha_actual, question, token,1, id, fecha_hora_actual,fecha_hora_actual))
