@@ -51,8 +51,8 @@ app = Flask(__name__)
 llama_model = os.getenv("LLAMA_MODEL")
 openai_model = os.getenv("OPENAI_MODEL")
 embedding_model=os.getenv("EMBEDDING_MODEL")
-pdf_folder_path = '../archivos/'
-file_charge_path = '../carga.txt'
+pdf_folder_path = os.getenv("DIR_ARCHIVOS")
+file_charge_path = os.getenv("DIR_CARGA")
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 embeddings=None
 llm=None
@@ -72,6 +72,10 @@ def endpoint1():
 def endpoint2():
     return chat(request, index, llm)
 
+@servicio1_bp.route('/cargarpiezas', methods=['POST'])
+def endpoint3():
+    return cargar_archivo(request, client)
+
 @servicio1_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
     return transcribe(request, client)
@@ -82,17 +86,6 @@ def endpoint5():
 
 # Registra el blueprint del Servicio 1 en la aplicación principal
 app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
-
-# Define un blueprint para el segundo servicio
-servicio2_bp = Blueprint('process', __name__)
-
-@servicio2_bp.route('/cargarpiezas', methods=['POST'])
-def endpoint3():
-    return cargar_archivo(request, client)
-    
-
-# Registra el blueprint del Servicio 2 en la aplicación principal
-app.register_blueprint(servicio2_bp, url_prefix='/servicio2')
 
 def split_chunks(sources):
     chunks = []
@@ -226,4 +219,5 @@ if __name__ == '__main__':
     else: 
         print(f"¡Advertencia! No existen datos entrenados para chatbot")
 
-    app.run(port=5000)
+    app.run(host='0.0.0.0', port=5000)
+

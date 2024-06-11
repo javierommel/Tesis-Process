@@ -1,6 +1,5 @@
 from flask import jsonify
 import os
-import whisper
 
 
 def transcribe(request, client):
@@ -34,10 +33,7 @@ def transcribe(request, client):
                 )
             print(transcript_es)
         if tipo == '2':
-            model = whisper.load_model("tiny")
-            result = model.transcribe(audio_path)
-            print(result["text"])
-            transcript_es = result["text"]
+            transcript_es = "Opción no disponible"
 
         os.remove(audio_path)
         cleaned_result = transcript_es.strip()

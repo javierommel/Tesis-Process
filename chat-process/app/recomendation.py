@@ -65,7 +65,7 @@ def recomendation(request, cliente, model):
         connection.commit()
         # Cerrar conexión
         connection.close()
-        response = {'recomendaciones': recommendations}
+        response = {'recomendaciones': recommendations, 'retcode': 0 }
         return response
     except Exception as e:
         # En caso de error, imprime el mensaje y realiza un rollback
@@ -73,6 +73,7 @@ def recomendation(request, cliente, model):
         traceback.print_exc()
         connection.rollback()
         connection.close()
+        response = {'recomendaciones': recommendations, 'retcode': 96 }
         return 'Error en consulta de recomendaciones'
 
 # Función para generar embeddings con OpenAI
