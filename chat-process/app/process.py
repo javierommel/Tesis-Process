@@ -13,7 +13,7 @@ def cargar_archivo(request, client):
         archivo = request.files['archivo']
         usuario_modificacion=request.form['usuario_modificacion']
         resultados=ejecutar_consultas(conexion)
-        with open('../config/config.json', 'r') as archivo_config:
+        with open('config/config.json', 'r') as archivo_config:
             configuracion = json.load(archivo_config)
         
         # Lee el archivo Excel en un DataFrame de pandas
@@ -26,15 +26,17 @@ def cargar_archivo(request, client):
             mensaje=realizar_insercion(configuracion,resultados, indice,fila, usuario_modificacion, conexion, client)
             if mensaje!="":
                 conexion.rollback()
-                return f"Error: {mensaje}"
+                return {'message': {mensaje}, 'retcode': 96 }
 
         conexion.commit()
         conexion.close()
-        return 'Registros insertados en la base de datos con éxito'
+        response = {'message': 'Archivos de piezas de arte cargado con éxito', 'retcode': 0 }
+        return response
     except Exception as e:
         conexion.rollback()
         conexion.close()
-        return f'Error: {str(e)}'
+        response = {'message':f'Error: {str(e)}', 'retcode':96}
+        return response
 
 def ejecutar_consultas(conexion):
     # Crea un cursor para ejecutar comandos SQL
