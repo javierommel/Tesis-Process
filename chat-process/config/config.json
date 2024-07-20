@@ -2,10 +2,10 @@
     "campos_piezas": {
         "tipos": "4",
         "tecnicas": "18",
-        "estado_piezas":"31",
-        "estado_integridades":"60",
+        "estado_piezas":"32",
+        "estado_integridades":"61",
         "materiales":"7,16",
-        "opcion_deterioro":"32,58",
+        "opcion_deterioro":"33,59",
         "fotosno":"67,74",
         "fotos":"65,66"
     },

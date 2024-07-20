@@ -1,11 +1,13 @@
 from flask import Flask, Blueprint, request
 import os  
 import datetime
+import traceback
 from db import connect_db
 from process import cargar_archivo
 from transcribe import transcribe
 from chat import chat
 from recomendation import recomendation
+from memory import clear_user_memory
 
 from openai import OpenAI as openai_api
 
@@ -19,6 +21,8 @@ from openai import OpenAI as openai_api
 #from langchain_core.prompts import PromptTemplate
 
 from langchain_openai import OpenAI as langchain_api
+from langchain_openai import OpenAIEmbeddings
+from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
@@ -33,6 +37,7 @@ from langchain_community.document_loaders import PyPDFLoader
 # Función para crear embeddings y almacenarlos en pgvector
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores.pgvector import PGVector
+from transformers import AutoModelForQuestionAnswering
 
 from dotenv import load_dotenv
 
@@ -41,7 +46,7 @@ load_dotenv()
 client = openai_api(
   api_key=os.getenv("OPEN_API_KEY"),  
 )
-
+entrenar=os.getenv("ENTRENAR_AUTOMATICO")
 CONEXION="postgresql+psycopg2://"+os.getenv("DB_USER")+":"+os.getenv("PASSWORD_DB_PROCESS")+"@"+os.getenv("HOST_DB_PROCESS")+":"+os.getenv("PORT_DB_PROCESS")+"/"+os.getenv("DATABASE_DB_PROCESS")
 COLLECTION_NAME = 'conceptas_vectors'
 
@@ -56,6 +61,8 @@ file_charge_path = os.getenv("DIR_CARGA")
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 embeddings=None
 llm=None
+#memoria=None
+#user_memories = {}
 index=None
 loop_elapsed=0
 #modelo gpt4all
@@ -74,7 +81,7 @@ def endpoint2():
 
 @servicio1_bp.route('/cargarpiezas', methods=['POST'])
 def endpoint3():
-    return cargar_archivo(request, client)
+    return cargar_archivo(request, client, embeddings)
 
 @servicio1_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
@@ -84,22 +91,44 @@ def endpoint4():
 def endpoint5():
     return recomendation(request, client, embedding_model)
 
+@servicio1_bp.route('/clearmemory', methods=['POST'])
+def endpoint6():
+    return clear_user_memory(request)
+
 # Registra el blueprint del Servicio 1 en la aplicación principal
 app.register_blueprint(servicio1_bp, url_prefix='/servicio1')
 
+#def split_chunks(sources):
+#    chunks = []
+#    splitter = CharacterTextSplitter(separator="*embbeding*", chunk_size=3000, chunk_overlap=0)
+#    i=0
+#    for chunk in splitter.split_documents(sources):
+#        chunks.append(chunk)
+#        i=i+1
+#    return chunks
+
 def split_chunks(sources):
     chunks = []
-    splitter = CharacterTextSplitter(separator="*embbeding*", chunk_size=256, chunk_overlap=0)
-    i=0
-    for chunk in splitter.split_documents(sources):
-        chunks.append(chunk)
-        i=i+1
+    separator = "*embbeding*"
+    splitter = CharacterTextSplitter(chunk_size=3000, chunk_overlap=100)
+    
+    for source in sources:
+        # Dividir el texto manualmente por el separador
+        sections = source.page_content.split(separator)
+        
+        for section in sections:
+            # Luego usar CharacterTextSplitter para manejar el tamaño del chunk y el solapamiento
+            split_texts = splitter.split_text(section)
+            for split_text in split_texts:
+                if split_text.strip():  # Ignorar texto vacío
+                    chunks.append(Document(page_content=split_text.strip()))   
+                    
     return chunks
 
 def extraer_datos():
     conexion=connect_db()
     with conexion.cursor() as cursor:
-        consulta = "select 'id: '||numero_ordinal ,'nombre de la obra '||nombre, 'otro_nombre: '||otro_nombre, 'autor: '||autor, 'siglo: '||siglo, 'sala: '||ubicacion,'descripcion: '||descripcion, numero_ordinal from public.piezas where estado=1"
+        consulta = "select 'Id: '||numero_ordinal ,'Obra: '||nombre, 'Otro Nombre: '||COALESCE(otro_nombre,'No tiene otro nombre'), 'Autor: '||autor, 'Siglo: '||siglo, 'Sala: '||ubicacion,'Descripcion: '||descripcion, numero_ordinal from public.piezas where estado=1"
         cursor.execute(consulta)
         registros = cursor.fetchall()
     return registros
@@ -154,25 +183,26 @@ def generar_faiss():
         print(f"completed in {elapsed}")
 
     #Carga de información de la tabla piezas
-    registros = extraer_datos()
-    if len(registros) == 0:
-        return "Error: No existen datos en la base de datos para entrenar"
-    textos = [" ".join(map(str, registro[:-1])) for registro in registros]  # Excluir el nuevo campo de los textos
-    nuevo_campo_valores = [registro[-1] for registro in registros]  # Extraer los valores del nuevo campo
+    if entrenar!="1":
+        registros = extraer_datos()
+        if len(registros) == 0:
+            return "Error: No existen datos en la base de datos para entrenar"
+        textos = [" ".join(map(str, registro[:-1])) for registro in registros]  # Excluir el nuevo campo de los textos
+        nuevo_campo_valores = [registro[-1] for registro in registros]  # Extraer los valores del nuevo campo
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks1 = []
-    for texto, nuevo_campo_valor in zip(textos, nuevo_campo_valores):
-        chunked_texts = text_splitter.split_text(texto)
-        for chunk in chunked_texts:
-            chunks1.append(Document(page_content=chunk, metadata={'id': nuevo_campo_valor}))
-    
-    search_index = PGVector(
-    embedding_function=embeddings,
-    collection_name=COLLECTION_NAME,
-    connection_string=CONEXION
-    )
-    search_index.add_documents(documents=chunks1)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=50)
+        chunks1 = []
+        for texto, nuevo_campo_valor in zip(textos, nuevo_campo_valores):
+            chunked_texts = text_splitter.split_text(texto)
+            for chunk in chunked_texts:
+                chunks1.append(Document(page_content=chunk, metadata={'id': nuevo_campo_valor}))
+        
+        search_index = PGVector(
+        embedding_function=embeddings,
+        collection_name=COLLECTION_NAME,
+        connection_string=CONEXION
+        )
+        search_index.add_documents(documents=chunks1)
     
     loop_end = datetime.datetime.now() #not used now but useful
     loop_elapsed = loop_end - loop_start #not used now but useful
@@ -203,13 +233,17 @@ def entrenar_modelo():
             return 'Error: No existen embeddings creados para la carga'
         return 'Datos entrenados correctamente'
     except Exception as e:
+        traceback.print_exc()
         return f'Error: {str(e)}'
 
 if __name__ == '__main__':
     #carga de modelo llama para crear embeddings
-    embeddings = HuggingFaceEmbeddings(model_name=llama_model)
+    #embeddings = HuggingFaceEmbeddings(model_name=llama_model)
+    embeddings = OpenAIEmbeddings(model="text-embedding-ada-002", openai_api_key=os.getenv("OPEN_API_KEY"))
+    #embeddings = AutoModelForQuestionAnswering.from_pretrained('google/lamda')
     #carga de modelo openai para responder preguntas
     llm = langchain_api(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0.9)
+    #memoria=ConversationBufferMemory()
     #modelo gpt4all
     #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)
 
