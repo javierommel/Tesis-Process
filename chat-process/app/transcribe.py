@@ -1,5 +1,7 @@
 from flask import jsonify
 import os
+import traceback
+import logging
 
 
 def transcribe(request, client):
@@ -10,7 +12,7 @@ def transcribe(request, client):
         tipo = request.form.get('tipo', '1')
 
         if not audio_file:
-            return jsonify({'error': 'Se requiere un archivo de audio y un JSON'}), 400
+            return jsonify({'codigo':'96','mensaje': 'Se requiere un archivo de audio y un JSON'}), 400
 
         print(audio_file)
         print(tipo)
@@ -37,10 +39,11 @@ def transcribe(request, client):
 
         os.remove(audio_path)
         cleaned_result = transcript_es.strip()
-        response = {'transcript': cleaned_result}
+        response = {'transcript': cleaned_result, 'codigo':'0', 'mensaje':'Transcripción realizada correctamente'}
 
         return jsonify(response)
 
     except Exception as e:
-        print(str(e))
-        return jsonify({'error': str(e)}), 500
+        logging.error(f"Error al transcribir pregunta: {str(e)}")
+        logging.error(traceback.print_exc())
+        return jsonify({'codigo':'96','mensaje': str(e)}), 500

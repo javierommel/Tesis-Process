@@ -40,6 +40,11 @@ from langchain_community.vectorstores.pgvector import PGVector
 from transformers import AutoModelForQuestionAnswering
 
 from dotenv import load_dotenv
+from logging_config import setup_logging
+import logging
+
+# Configurar el logging
+setup_logging()
 
 load_dotenv()
 
@@ -81,7 +86,7 @@ def endpoint2():
 
 @servicio1_bp.route('/cargarpiezas', methods=['POST'])
 def endpoint3():
-    return cargar_archivo(request, client, embeddings)
+    return cargar_archivo(request, client, embedding_model, embeddings)
 
 @servicio1_bp.route('/transcribe', methods=['POST'])
 def endpoint4():
@@ -89,7 +94,7 @@ def endpoint4():
 
 @servicio1_bp.route('/recomendation', methods=['POST'])
 def endpoint5():
-    return recomendation(request, client, embedding_model)
+    return recomendation(request, client, embedding_model,embeddings)
 
 @servicio1_bp.route('/clearmemory', methods=['POST'])
 def endpoint6():
@@ -160,9 +165,7 @@ def generar_faiss():
     if len(doc_list)==0:
         return 'Error: No existen archivos con información para entrenar'
     num_of_docs = len(doc_list)
-    general_start = datetime.datetime.now()
-    print("comienza proceso...")
-    loop_start = datetime.datetime.now()
+    
     loader = PyPDFLoader(os.path.join(pdf_folder_path, doc_list[0]))
     docs = loader.load()
     chunks = split_chunks(docs)
@@ -204,15 +207,8 @@ def generar_faiss():
         )
         search_index.add_documents(documents=chunks1)
     
-    loop_end = datetime.datetime.now() #not used now but useful
-    loop_elapsed = loop_end - loop_start #not used now but useful
-    print(f"All documents processed in {loop_elapsed}")
-    print(f"the daatabase is done with {num_of_docs} subset of db index")
-    print(f"Merging completed")
-    general_end = datetime.datetime.now() #not used now but useful
-    general_elapsed = general_end - general_start #not used now but useful
-    print(f"All indexing completed in {general_elapsed}")
-    print("-----------------------------------")
+    #print(f"the database is done with {num_of_docs} subset of db index")
+    #print(f"Merging completed")
     
     contenido = "CARGA CORRECTA"
     # Abrir el archivo en modo de escritura y escribir el contenido
@@ -223,26 +219,34 @@ def generar_faiss():
 
 def entrenar_modelo():
     try:
+        general_start = datetime.datetime.now()
+        logging.info("comienza proceso...")
+        loop_start = datetime.datetime.now()
         mensaje=""
         mensaje=generar_faiss()
         if mensaje!="":
             return mensaje
         global index
         index=carga_inicial()
+        loop_end = datetime.datetime.now() #not used now but useful
+        loop_elapsed = loop_end - loop_start #not used now but useful
+        general_end = datetime.datetime.now() #not used now but useful
+        general_elapsed = general_end - general_start #not used now but useful
+        logging.info(f"All indexing completed in {general_elapsed} segundos")
         if len(index)==0:
-            return 'Error: No existen embeddings creados para la carga'
-        return 'Datos entrenados correctamente'
+            return {'mensaje':'No existen embeddings creados para la carga','codigo':'96'}
+        return {'mensaje':'Datos entrenados correctamente','codigo':'0'}
     except Exception as e:
-        traceback.print_exc()
-        return f'Error: {str(e)}'
+        logging.error(f"Error al entrenar modelo:  {str(e)}")
+        logging.error(traceback.print_exc())
+        return {'mensaje': {str(e)},'codigo':'96'}
 
 if __name__ == '__main__':
     #carga de modelo llama para crear embeddings
     #embeddings = HuggingFaceEmbeddings(model_name=llama_model)
-    embeddings = OpenAIEmbeddings(model="text-embedding-ada-002", openai_api_key=os.getenv("OPEN_API_KEY"))
-    #embeddings = AutoModelForQuestionAnswering.from_pretrained('google/lamda')
+    embeddings = OpenAIEmbeddings(model=embedding_model, openai_api_key=os.getenv("OPEN_API_KEY"))
     #carga de modelo openai para responder preguntas
-    llm = langchain_api(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0.9)
+    llm = langchain_api(model_name=openai_model, openai_api_key=os.getenv("OPEN_API_KEY"), temperature=0)
     #memoria=ConversationBufferMemory()
     #modelo gpt4all
     #llm = GPT4All(model=gpt4all_path, max_tokens=1000,callback_manager=callback_manager, verbose=True,repeat_last_n=0)

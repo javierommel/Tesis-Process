@@ -4,6 +4,7 @@ import json
 import os  
 import traceback
 from datetime import datetime
+import datetime as datetime1
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from langchain_community.vectorstores.pgvector import PGVector
@@ -13,6 +14,7 @@ from openpyxl.drawing.image import Image
 import io
 from PIL import Image as PILImage
 import base64
+import logging
 
 load_dotenv()
 
@@ -21,10 +23,18 @@ COLLECTION_NAME = 'conceptas_vectors'
 entrenar=os.getenv("ENTRENAR_AUTOMATICO")
 fila_materiales=()
 fila_deterioro=()
+embedding_model=None
+embeddings=None
 
-def cargar_archivo(request, client, embeddings):
+def cargar_archivo(request, client, embedding_modeln, embeddingsn ):
     conexion=connect_db()
+    global embedding_model
+    embedding_model=embedding_modeln
+    global embeddings
+    embeddings=embeddingsn
     try:
+        general_start = datetime1.datetime.now()
+        logging.info("comienza cargar piezas...")
         archivo = request.files['archivo']
         usuario_modificacion=request.form['usuario_modificacion']
         resultados=ejecutar_consultas(conexion)
@@ -33,7 +43,7 @@ def cargar_archivo(request, client, embeddings):
         
         # Lee el archivo Excel en un DataFrame de pandas
         df = pd.read_excel(archivo, header=None)     
-        print("DataFrame recibido:")
+        logging.info("archivo leído correctamente:")
         wb = openpyxl.load_workbook(archivo)
         sheet = wb.active
 
@@ -47,15 +57,15 @@ def cargar_archivo(request, client, embeddings):
             mensaje, valores=realizar_insercion(configuracion,resultados, indice,fila, usuario_modificacion, conexion, client, images)
             if mensaje!="":
                 conexion.rollback()
-                return {'message': {mensaje}, 'retcode': 96 }
+                return {'mensaje': {mensaje}, 'retcode': '0' }
             if len(valores) != 0:
                 registros.append(valores)
             
         if entrenar=="1":
             if len(registros) == 0:
-                return "Error: No existen datos en la base de datos para entrenar"
+                return {'mensaje': 'No existen datos en la base de datos para entrenar','codigo':'96'}
             textos = [" ".join(map(str, registro[:-1])) for registro in registros]  # Excluir el nuevo campo de los textos
-            print(textos)
+            #print(textos)
             nuevo_campo_valores = [registro[-1] for registro in registros]  # Extraer los valores del nuevo campo
 
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=50)
@@ -71,16 +81,19 @@ def cargar_archivo(request, client, embeddings):
             connection_string=CONEXION
             )
             search_index.add_documents(documents=chunks1)
-
         conexion.commit()
         conexion.close()
-        response = {'message': 'Archivos de piezas de arte cargado con éxito', 'retcode': 0 }
+        general_end = datetime1.datetime.now() #not used now but useful
+        general_elapsed = general_end - general_start #not used now but useful
+        logging.info(f"Carga completada en {general_elapsed} segundos")
+        response = {'mensaje': 'Archivos de piezas de arte cargado con éxito', 'retcode': 0 }
         return response
     except Exception as e:
         conexion.rollback()
         conexion.close()
-        traceback.print_exc()
-        response = {'message':f'Error: {str(e)}', 'retcode':96}
+        logging.error(f"Error al cargar archivo:  {str(e)}")
+        logging.error(traceback.print_exc())
+        response = {'mensaje':f'Error: {str(e)}', 'retcode':96}
         return response
 
 def ejecutar_consultas(conexion):
@@ -191,14 +204,14 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
             elif (columna>=int(fotosno[0]) and columna<=int(fotosno[1])):
                 cargarfoto=""
             elif (columna>=int(fotos[0]) and columna<=int(fotos[1])):
-                print(f"indice: "+str(indice)+" columna: "+str(columna))
+                #print(f"indice: "+str(indice)+" columna: "+str(columna))
                 image_data = None
                 for img in images:
                     if img.anchor._from.row == indice and img.anchor._from.col == columna:  # BM4 is column 66 (BM), row 4 (index starts at 0)
                         image_data = img
 
                 if image_data:
-                    print("imagen encontrdaa")
+                    #print("imagen encontrada")
                     image_stream = io.BytesIO()
 
                     # Abrir la imagen utilizando PIL y guardarla en un stream
@@ -213,7 +226,7 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
                     valores_celda.append("")
                 contador_campos=contador_campos+1
             else:
-                print("columna: "+str(columna)+"valor: "+str(valor))
+                #print("columna: "+str(columna)+"valor: "+str(valor))
                 valores_celda.append(valor)
                 contador_campos=contador_campos+1
         ##columnas_a_insertar=list(range(1, contador_campos))
@@ -253,11 +266,11 @@ def realizar_insercion(configuracion, resultados,indice,fila, usuario_modificaci
         store_embeddings(conexion, valores_a_insertar, tipo_bien_entrenar, siglo_entrenar,embedding)
         # Confirma la transacción
         #conexion.commit()
-        print(f"Id: {fila[1]} Insertado Correctamente")
+        logging.info(f"Id: {fila[1]} Insertado Correctamente")
     except Exception as e:
         # En caso de error, imprime el mensaje y realiza un rollback
-        print(f"Error al insertar registro: fila->{fila[1]} Error->{str(e)}")
-        traceback.print_exc()
+        logging.error(f"Error al insertar registro: fila: {fila[1]} Error->{str(e)}")
+        logging.error(traceback.print_exc())
         respuesta=f"Id: {fila[1]} Error al insertar:{str(e)}"
     return respuesta, valores_entrenar
         #conexion.rollback()
@@ -272,19 +285,18 @@ def buscar_id(resultados, nombre, opcion):
     consulta = resultados[opcion]
     for fila in consulta:
         id_actual, nombre_actual = fila
-        #print(f"nombreactual: {nombre_actual}   nombre: {nombre}")
         if nombre_actual.upper().strip() in nombre.upper().strip() or nombre.upper().strip() in  nombre_actual.upper().strip(): 
             return id_actual
 
 # Función para generar embeddings con OpenAI
-def generate_embeddings(piece, tipo_bien_entrenar, client):
+def generate_embeddings(piece, tipo_bien_entrenar, client ):
     text=""
     text+=f"titulo:{piece[4]}\n"
     text+=f"texto:{piece[17]}\n"
     text+=f"tipo:{tipo_bien_entrenar}\n"
     text+=f"autor:{piece[8]}\n"
     text+=f"siglo:{piece[9]}\n"
-    return client.embeddings.create(input=[text], model="text-embedding-ada-002").data[0].embedding
+    return client.embeddings.create(input=[text], model=embedding_model).data[0].embedding
 
 # Función para almacenar embeddings en pgvector
 def store_embeddings(connection, piece, tipo_bien_entrenar, siglo_entrenar, embedding):

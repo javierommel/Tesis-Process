@@ -2,10 +2,13 @@ from db import connect_db
 import numpy as np
 import traceback
 from datetime import datetime, date
+import datetime as datetime1
 import base64
+import logging
 
 client= None
 model_embedding=None
+embeddingsm=None
 
 # Función para buscar recomendaciones basadas en embeddings
 def find_recommendations(connection, embedding):
@@ -70,11 +73,31 @@ def find_questions(connection, usuario):
     preguntas = [fila[0] for fila in resultados]
     return preguntas
 
+def find_questions_inicial(connection):
+    query = '''
+        SELECT 
+            'titulo: ' || COALESCE(v.nombre,'No identificado') || E'\n' || 'texto: ' || v.descripcion || E'\n' || 'tipo: ' || t.nombre || E'\n' || 'autor: ' || v.autor || E'\n' || 'siglo: ' || COALESCE(v.siglo,'No identificado') 
+            AS pregunta 
+        FROM 
+            public.piezas v
+        LEFT OUTER JOIN 
+            public.tipos t ON v.tipo_bien = t.id
+        where 
+            v.numero_ordinal in (1,67,137);
+    '''
+    cursor = connection.cursor()
+    cursor.execute(query,[])
+    resultados =cursor.fetchall()
+    preguntas = [fila[0] for fila in resultados]
+    return preguntas
+
 # Función principal
-def recomendation(request, cliente, model):
+def recomendation(request, cliente, model, embeddingsn):
     global client
     client = cliente
     global model_embedding
+    global embeddingsm
+    embeddingsm=embeddingsn
     model_embedding=model
     # Conexión a la base de datos
     connection = connect_db()
@@ -84,12 +107,22 @@ def recomendation(request, cliente, model):
                  "¿Que es el risco?", 
                  "¿Quien es el Arcangel San Miguel?"]  
     try:
+        general_start = datetime1.datetime.now()
+        #print("comienza recomendacion...")
         if usuario!='':
             questions_aux=find_questions(connection, usuario)
             if len(questions_aux)!=0:
                 questions=questions_aux
-
-        print(f'questions: {questions}')
+            else: 
+                questions_aux1=find_questions(connection, usuario)
+                if len(questions_aux1)!=0:
+                    questions=questions_aux1
+        else:
+            questions_aux=find_questions_inicial(connection)
+            if len(questions_aux)!=0:
+                questions=questions_aux
+                usuario="admin"
+        logging.info(f'questions: {questions}')
         # Generar embeddings para cada pregunta
         embeddings = [generate_embeddings(question) for question in questions]
         
@@ -102,20 +135,24 @@ def recomendation(request, cliente, model):
         connection.commit()
         # Cerrar conexión
         connection.close()
-        response = {'recomendaciones': recommendations, 'retcode': 0 }
+        response = {'recomendaciones': recommendations, 'retcode': 0,'mensaje':'Recomendación realizada correctamente' }
+        general_end = datetime1.datetime.now() #not used now but useful
+        general_elapsed = general_end - general_start #not used now but useful
+        #print(f"Recomendacion completada en {general_elapsed} segundos")
         return response
     except Exception as e:
         # En caso de error, imprime el mensaje y realiza un rollback
-        print(f"Error al insertar registro: {str(e)}")
-        traceback.print_exc()
+        logging.error(f"Error en consulta de recomendaciones: {str(e)}")
+        logging.error(traceback.print_exc())
         connection.rollback()
         connection.close()
-        response = {'recomendaciones': recommendations, 'retcode': 96 }
+        response = {'recomendaciones': recommendations, 'codigo': 96, 'mensaje':{str(e)} }
         return 'Error en consulta de recomendaciones'
 
 # Función para generar embeddings con OpenAI
 def generate_embeddings(question):
     return client.embeddings.create(input=[question], model=model_embedding).data[0].embedding
+    #return embeddingsm.embed_query(question)
 
 def save_question(question, usuario, token, connection, id):
     #print(f'rec: {usuario} : {id}')
