@@ -1,4 +1,6 @@
 import logging
+from logging.handlers import TimedRotatingFileHandler
+import os
 
 def setup_logging():
     logger = logging.getLogger()
@@ -8,8 +10,8 @@ def setup_logging():
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
 
-    # Crear un manejador de archivo
-    file_handler = logging.FileHandler('app.log')
+    # Crear un manejador de archivo con rotación diaria
+    file_handler = TimedRotatingFileHandler(os.getenv("OPEN_API_KEY"), when='midnight', interval=1, backupCount=14)
     file_handler.setLevel(logging.DEBUG)
 
     # Crear un formateador
@@ -21,7 +23,7 @@ def setup_logging():
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
-     # Silenciar mensajes de DEBUG de bibliotecas de terceros
+    # Silenciar mensajes de DEBUG de bibliotecas de terceros
     logging.getLogger('httpx').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
     logging.getLogger('openai').setLevel(logging.WARNING)
